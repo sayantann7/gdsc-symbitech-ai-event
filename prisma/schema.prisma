@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Team {
+  id          String       @id @default(uuid())
+  name        String
+  members     String?
+  status      String       @default("active")
+  score       Float        @default(0)
+  createdAt   DateTime     @default(now())
+  submissions Submission[]
+}
+
+model Submission {
+  id          String   @id @default(uuid())
+  teamId      String
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  round       Int?
+  challenge   String?
+  prompt      String
+  llmResponse String   @db.Text
+  score       Float    @default(0)
+  tokensUsed  Int      @default(0)
+  violations  String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([teamId])
+}
+
+model Round {
+  id          String      @id @default(uuid())
+  order       Int         @unique
+  title       String
+  description String      @db.Text
+  challenges  Challenge[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Challenge {
+  id                 String   @id @default(uuid())
+  roundId            String
+  round              Round    @relation(fields: [roundId], references: [id])
+  slug               String   @unique
+  title              String
+  description        String   @db.Text
+  triggerDescription String?  @db.Text
+  active             Boolean  @default(true)
+  constraints        Json?
+  timeLimit          Int?
+  maxAttempts        Int?
+  submissions        String[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([roundId])
+}

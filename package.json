@@ -1,0 +1,36 @@
+{
+  "name": "gdsc-symbitech-ai-event",
+  "version": "1.0.0",
+  "description": "LLM Arena backend using Groq + Prisma (TypeScript)",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "npm run build && npm run start",
+    "dev-safe": "npm run build && node --unhandled-rejections=warn dist/index.js",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:reset": "prisma migrate reset --force",
+    "db:studio": "prisma studio"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@prisma/client": "^5.19.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "groq-sdk": "^0.32.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.10",
+    "@types/uuid": "^9.0.7",
+    "prisma": "^5.19.1",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.9.2"
+  }
+}
