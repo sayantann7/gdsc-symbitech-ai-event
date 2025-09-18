@@ -616,11 +616,11 @@ app.post('/api/submit-prompt', async (req: Request<unknown, unknown, SubmitPromp
       evalResult.feedback = `Output: ${evalResult.feedback} | Prompt Quality: ${promptScore}/100 | Combined Score: ${Math.round(combinedScore)} | Round ${roundNum} multiplier: ${multiplier}x`;
     }
 
-    await prisma.team.update({
-      where: { id: teamId },
-      data: { score: team.score + (typeof evalResult.score === 'number' ? evalResult.score : 0) }
-    });
+    // Define passing threshold
+    const PASSING_THRESHOLD = 60;
+    const passed = evalResult.score >= PASSING_THRESHOLD;
 
+    // Always create submission record for tracking attempts
     await prisma.submission.create({
       data: {
         id: uuidv4(),
@@ -635,13 +635,34 @@ app.post('/api/submit-prompt', async (req: Request<unknown, unknown, SubmitPromp
       }
     });
 
-    return res.json({
-      success: true,
-      response: llmResp,
-      tokensUsed,
-      score: evalResult.score,
-      feedback: evalResult.feedback
-    });
+    // Only update team score if the attempt passed
+    if (passed) {
+      await prisma.team.update({
+        where: { id: teamId },
+        data: { score: team.score + (typeof evalResult.score === 'number' ? evalResult.score : 0) }
+      });
+
+      return res.json({
+        success: true,
+        passed: true,
+        response: llmResp,
+        tokensUsed,
+        score: evalResult.score,
+        feedback: evalResult.feedback,
+        message: `Congratulations! You passed Round ${roundNum} with ${evalResult.score} points!`
+      });
+    } else {
+      return res.json({
+        success: true,
+        passed: false,
+        response: llmResp,
+        tokensUsed,
+        score: evalResult.score,
+        feedback: evalResult.feedback,
+        message: `Put more effort! You need at least ${PASSING_THRESHOLD} points to pass. You scored ${evalResult.score} points. Try again!`,
+        threshold: PASSING_THRESHOLD
+      });
+    }
   } catch (err) {
     console.error('Error handling /api/submit-prompt:', err);
     return res.status(500).json({ success: false, detail: 'Internal server error' });
@@ -938,18 +959,43 @@ app.get('/api/teams/:id/progress', async (req: Request<{ id: string }>, res: Res
     });
 
     // Determine which rounds are completed (have successful submissions with score > 60)
+    const PASSING_THRESHOLD = 60;
     const roundProgress = [1, 2, 3].map(roundNum => {
       const roundSubmissions = submissions.filter(s => s.round === roundNum);
       const bestScore = Math.max(0, ...roundSubmissions.map(s => s.score));
-      const isCompleted = bestScore >= 60; // Minimum score to pass a round
+      const isCompleted = bestScore >= PASSING_THRESHOLD;
+
+      // Check if previous rounds are completed to determine unlock status
+      const isPreviousRoundCompleted = (round: number) => {
+        if (round <= 1) return true; // Round 1 is always unlocked
+        const prevRoundSubs = submissions.filter(s => s.round === round - 1);
+        const prevBestScore = Math.max(0, ...prevRoundSubs.map(s => s.score));
+        return prevBestScore >= PASSING_THRESHOLD;
+      };
+
+      // Determine accessibility based on round locking rules
+      let accessible = false;
+      let locked = false;
+
+      if (roundNum === 1) {
+        // Round 1: Always accessible unless Round 2 is unlocked (completed)
+        accessible = true;
+        locked = isPreviousRoundCompleted(2); // Lock Round 1 if Round 2 is unlocked
+      } else if (roundNum === 2) {
+        // Round 2: Accessible if Round 1 is completed, locked if Round 3 is unlocked
+        accessible = isPreviousRoundCompleted(roundNum) && !locked;
+        locked = isPreviousRoundCompleted(3); // Lock Round 2 if Round 3 is unlocked
+      } else if (roundNum === 3) {
+        // Round 3: Accessible if Round 2 is completed, never locked
+        accessible = isPreviousRoundCompleted(roundNum);
+        locked = false;
+      }
 
       return {
         round: roundNum,
-        unlocked: roundNum === 1 || (roundNum > 1 && [1, 2].slice(0, roundNum - 1).every(r => {
-          const prevRoundSubs = submissions.filter(s => s.round === r);
-          const prevBestScore = Math.max(0, ...prevRoundSubs.map(s => s.score));
-          return prevBestScore >= 60;
-        })),
+        unlocked: isPreviousRoundCompleted(roundNum),
+        accessible: accessible,
+        locked: locked,
         completed: isCompleted,
         bestScore: bestScore > 0 ? bestScore : null,
         attempts: roundSubmissions.length
