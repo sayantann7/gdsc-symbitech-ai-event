@@ -3,9 +3,19 @@ import express, { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import Groq from 'groq-sdk';
+import cors from 'cors';
 
 const prisma = new PrismaClient();
 const app = express();
+
+// CORS configuration
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 
 const GROQ_API_KEY: string | undefined = process.env.GROQ_API_KEY;
@@ -126,26 +136,30 @@ GENERAL RULES:
 `
 
 const HINTS = {
-    1: "💡 Hint for Level 1: Be very precise. Try a question with an exact word count. Guess a no between 4-9?",
-    2: "💡 Hint for Level 2: Ask me about a sense that doesn't exist, like the taste of a color or the sound of an idea.",
-    3: "💡 Hint for Level 3: Give me two instructions that cancel each other out in the same sentence.",
-    4: "💡 Hint for Level 4: Tell me who to be. Try making me 'act as a' character.",
-    5: "💡 Hint for Level 5: Talk to me in slang like 'yo', 'bruh', or 'spill the tea'.",
+  1: "💡 Hint for Level 1: Be very precise. Try a question with an exact word count. Guess a no between 4-9?",
+  2: "💡 Hint for Level 2: Ask me about a sense that doesn't exist, like the taste of a color or the sound of an idea.",
+  3: "💡 Hint for Level 3: Give me two instructions that cancel each other out in the same sentence.",
+  4: "💡 Hint for Level 4: Tell me who to be. Try making me 'act as a' character.",
+  5: "💡 Hint for Level 5: Talk to me in slang like 'yo', 'bruh', or 'spill the tea'.",
 }
 
 /* ----------------- Seed Data (Rounds / Challenges) ----------------- */
 type SeedConstraint = { maxWords?: number; forbiddenWords?: string[]; requiredElements?: string[] };
-const SEED_ROUNDS: Array<{ order: number; title: string; description: string; challenges: Array<{ slug: string; title: string; description: string; triggerDescription?: string; constraints?: SeedConstraint; timeLimit?: number; maxAttempts?: number }>}> = [
+const SEED_ROUNDS: Array<{ order: number; title: string; description: string; challenges: Array<{ slug: string; title: string; description: string; triggerDescription?: string; constraints?: SeedConstraint; timeLimit?: number; maxAttempts?: number }> }> = [
   {
     order: 1,
     title: 'The Gauntlet',
     description: 'Precision & Constraints: Teams must achieve precise AI outputs while adhering to strict constraints like word limits and forbidden keywords.',
     challenges: [
       {
-        slug: 'precision-constraint',
-        title: 'Precision Writing Challenge',
-        description: 'Generate a product description in exactly 50 words',
-        constraints: { maxWords: 50, forbiddenWords: ['amazing','incredible'], requiredElements: ['price','features'] },
+        slug: 'precision-product-description',
+        title: 'Precision Product Marketing',
+        description: 'Write a compelling product description for a new smartphone that is EXACTLY 75 words long. Must include price, key features, and target audience. Forbidden words: "revolutionary", "groundbreaking", "unprecedented". Required elements: actual price in rupees, battery life, camera specs.',
+        constraints: {
+          maxWords: 75,
+          forbiddenWords: ['revolutionary', 'groundbreaking', 'unprecedented', 'game-changing', 'world-class'],
+          requiredElements: ['₹', 'battery', 'camera', 'mAh']
+        },
         timeLimit: 300,
         maxAttempts: 3
       }
@@ -157,18 +171,12 @@ const SEED_ROUNDS: Array<{ order: number; title: string; description: string; ch
     description: 'Analysis & Debugging: Reverse-engineer prompts from outputs and debug broken prompts causing errors or hallucinations.',
     challenges: [
       {
-        slug: 'reverse-engineer',
-        title: 'Reverse Engineer Output',
-        description: 'Given an AI output, infer the likely original prompt with justification.',
-        timeLimit: 300,
-        maxAttempts: 3
-      },
-      {
-        slug: 'prompt-debug',
-        title: 'Prompt Debugger',
-        description: 'Given a failing / hallucinating prompt, rewrite it to reduce ambiguity and errors.',
-        timeLimit: 300,
-        maxAttempts: 3
+        slug: 'reverse-engineer-recipe',
+        title: 'Reverse Engineer: Recipe Analysis',
+        description: 'CHALLENGE: Given this AI output - "Mix 2 cups flour, 1 cup sugar, 3 eggs. Bake at 350°F for 25 minutes. Add chocolate chips before baking. Serves 8 people. Perfect for birthday parties!" - What was the most likely original prompt? Your task is to reconstruct the prompt that would generate this specific output. Consider the style, detail level, and specific information included.',
+        triggerDescription: 'Analyze the given output and provide the most likely original prompt with reasoning.',
+        timeLimit: 400,
+        maxAttempts: 2
       }
     ]
   },
@@ -178,23 +186,10 @@ const SEED_ROUNDS: Array<{ order: number; title: string; description: string; ch
     description: 'Complex Application: Multi-layered, real-world problems needing advanced prompting for structured solutions.',
     challenges: [
       {
-        slug: 'technical-schema',
-        title: 'Design a Technical Schema',
-        description: 'Generate a normalized database schema and brief API outline for a given product concept.',
-        timeLimit: 600,
-        maxAttempts: 2
-      },
-      {
-        slug: 'marketing-plan',
-        title: 'Rapid Marketing Plan',
-        description: 'Produce a concise multi-channel marketing plan with KPIs and timeline.',
-        timeLimit: 600,
-        maxAttempts: 2
-      },
-      {
-        slug: 'creative-narrative',
-        title: 'Creative Narrative Builder',
-        description: 'Generate an engaging short narrative integrating user-provided thematic constraints.',
+        slug: 'startup-business-plan',
+        title: 'Comprehensive Startup Strategy',
+        description: 'SCENARIO: You are consulting for a new EdTech startup that wants to create an AI-powered learning platform for college students in India. Create a prompt that generates: 1) Target market analysis, 2) Revenue model with pricing tiers, 3) Technology stack requirements, 4) Go-to-market strategy with timeline, 5) Risk assessment with mitigation plans. The output should be structured, professional, and include specific metrics and actionable insights.',
+        triggerDescription: 'Design a comprehensive business strategy prompt for an EdTech startup targeting Indian college students.',
         timeLimit: 600,
         maxAttempts: 2
       }
@@ -288,17 +283,196 @@ function simpleSentiment(text: string | null | undefined): 'positive' | 'negativ
   return 'neutral';
 }
 
-function evaluateOutputAgainstCriteria(output: string, criteria: EvaluationCriteria = {}): EvaluationResult {
+function evaluatePromptQuality(prompt: string, roundNum: number): number {
+  let score = 60; // Start with a reasonable base score
+
+  // Check prompt length and detail
+  const words = prompt.trim().split(/\s+/).length;
+  if (words < 5) {
+    score -= 30; // Very short prompts get heavily penalized
+  } else if (words < 10) {
+    score -= 15; // Short prompts get moderately penalized  
+  } else if (words > 15) {
+    score += 10; // Longer, more detailed prompts get bonus points
+  }
+
+  // Check for specific quality indicators based on round
+  if (roundNum === 1) {
+    // Round 1: Marketing - look for marketing terms
+    if (/product|marketing|description|compelling|features|benefits|customers?/i.test(prompt)) {
+      score += 15;
+    }
+    if (/creative|innovative|unique|brand|target|audience/i.test(prompt)) {
+      score += 10;
+    }
+  } else if (roundNum === 3) {
+    // Round 3: Business strategy - look for business terms
+    if (/business|strategy|plan|market|analysis|financial|revenue|growth/i.test(prompt)) {
+      score += 15;
+    }
+    if (/competitive|scalable|funding|team|projections|risk|mitigation/i.test(prompt)) {
+      score += 10;
+    }
+  }
+
+  // Check for clarity and instruction quality
+  if (/create|generate|develop|build|design|write/i.test(prompt)) {
+    score += 5; // Clear action words
+  }
+
+  if (/detailed|comprehensive|specific|professional|high-quality/i.test(prompt)) {
+    score += 8; // Quality indicators
+  }
+
+  // Ensure score is within bounds
+  return Math.max(20, Math.min(100, score));
+}
+
+function evaluateReverseEngineering(userResponse: string): EvaluationResult {
+  // Reverse engineering challenge evaluation
   let score = 100.0;
   const violations: string[] = [];
   const feedbackItems: string[] = [];
+
+  const response = userResponse.toLowerCase();
+
+  // Check if response includes reconstruction of the prompt
+  const hasPromptReconstruction = response.includes('prompt') || response.includes('ask') || response.includes('write') || response.includes('create');
+  if (!hasPromptReconstruction) {
+    violations.push('missing_prompt_reconstruction');
+    score -= 30;
+    feedbackItems.push('Missing actual prompt reconstruction');
+  }
+
+  // Check for reasoning/justification
+  const hasReasoning = response.includes('because') || response.includes('likely') || response.includes('suggests') || response.includes('indicates') || response.includes('reasoning');
+  if (!hasReasoning) {
+    violations.push('missing_reasoning');
+    score -= 25;
+    feedbackItems.push('Missing reasoning for prompt reconstruction');
+  }
+
+  // Check for analysis of output characteristics
+  const hasAnalysis = response.includes('style') || response.includes('format') || response.includes('structure') || response.includes('detail');
+  if (hasAnalysis) {
+    score += 10; // Bonus for good analysis
+    feedbackItems.push('Good analysis of output characteristics');
+  }
+
+  // Check if response shows understanding of the recipe context
+  const hasContextUnderstanding = response.includes('recipe') || response.includes('cooking') || response.includes('baking') || response.includes('ingredients');
+  if (!hasContextUnderstanding) {
+    violations.push('missing_context_understanding');
+    score -= 15;
+    feedbackItems.push('Missing context understanding of the given output');
+  }
+
+  if (score < 0) score = 0;
+
+  feedbackItems.push('Violations: ' + (violations.length ? violations.join(', ') : 'none'));
+  return { score: Math.round(score * 100) / 100, violations, feedback: feedbackItems.join('; ') };
+}
+
+async function evaluateOutputWithAI(prompt: string, output: string, challenge: any, roundNum: number): Promise<EvaluationResult> {
+  try {
+    // Create evaluation criteria based on challenge and round
+    const evaluationPrompt = `
+You are an AI judge for the LLM-Arena Championship. Evaluate the quality of a prompt and its generated output.
+
+CHALLENGE CONTEXT:
+${challenge ? `Title: ${challenge.title}\nDescription: ${challenge.description}` : `Round ${roundNum} Challenge`}
+
+ROUND ${roundNum} CRITERIA:
+${roundNum === 1 ? 'Focus on precision, clarity, and constraint following. Score based on how well the prompt generates the desired marketing content.' :
+        roundNum === 2 ? 'This is reverse engineering. Score how well the user analyzed and reconstructed the original prompt from the given output.' :
+          'Focus on comprehensive business strategy. Score completeness, feasibility, and strategic depth.'}
+
+USER PROMPT: "${prompt}"
+
+AI OUTPUT: "${output}"
+
+Please evaluate and provide:
+1. A score from 0-100 based on prompt quality and output relevance
+2. Specific feedback on strengths and weaknesses
+3. Whether the response meets the challenge requirements
+
+Consider:
+- Prompt engineering skill and creativity
+- Output relevance and quality  
+- Meeting challenge-specific requirements
+- Overall effectiveness
+
+Respond in JSON format:
+{
+  "score": <number 0-100>,
+  "feedback": "<detailed feedback>",
+  "strengths": ["<strength1>", "<strength2>"],
+  "weaknesses": ["<weakness1>", "<weakness2>"],
+  "meetsRequirements": <true/false>
+}`;
+
+    const aiEvaluation = await groq.chat.completions.create({
+      messages: [{ role: 'user', content: evaluationPrompt }],
+      model: GROQ_MODEL_NAME,
+      temperature: 0.3,
+      max_tokens: 500
+    });
+
+    const evalContent = aiEvaluation.choices[0]?.message?.content || '{"score": 50, "feedback": "Error in evaluation"}';
+
+    try {
+      const parsed = JSON.parse(evalContent);
+      const baseScore = Math.max(0, Math.min(100, parsed.score || 50));
+
+      // Apply round multiplier
+      const multiplier = roundNum === 1 ? 1.0 : roundNum === 2 ? 1.5 : roundNum === 3 ? 2.0 : 1.0;
+      const finalScore = Math.round(baseScore * multiplier * 100) / 100;
+
+      const feedback = `AI Evaluation: ${parsed.feedback} | Strengths: ${(parsed.strengths || []).join(', ')} | Areas for improvement: ${(parsed.weaknesses || []).join(', ')} | Round ${roundNum} multiplier: ${multiplier}x`;
+
+      return {
+        score: finalScore,
+        violations: parsed.meetsRequirements === false ? ['requirements_not_met'] : [],
+        feedback: feedback
+      };
+    } catch (parseError) {
+      console.error('Failed to parse AI evaluation:', parseError);
+      return {
+        score: 50,
+        violations: ['evaluation_error'],
+        feedback: 'AI evaluation failed, using default score'
+      };
+    }
+  } catch (error) {
+    console.error('AI evaluation error:', error);
+    return {
+      score: 50,
+      violations: ['evaluation_error'],
+      feedback: 'AI evaluation service temporarily unavailable'
+    };
+  }
+}
+
+function evaluateOutputAgainstCriteria(output: string, criteria: EvaluationCriteria = {}, roundMultiplier: number = 1.0): EvaluationResult {
+  let score = 70.0; // Start with a more realistic base score
+  const violations: string[] = [];
+  const feedbackItems: string[] = [];
   const wc = countWords(output);
+
+  // Basic quality checks
+  if (wc < 10) {
+    violations.push('too_short');
+    score -= 30;
+  } else if (wc < 20) {
+    violations.push('very_brief');
+    score -= 15;
+  }
 
   if ('wordCount' in criteria && typeof criteria.wordCount === 'number') {
     const expected = Number(criteria.wordCount);
     if (wc !== expected) {
       violations.push(`wordCount:${wc}/${expected}`);
-      score -= Math.min(30, Math.abs(wc - expected) * 2);
+      score -= Math.min(25, Math.abs(wc - expected) * 1.5);
     }
   }
 
@@ -306,7 +480,7 @@ function evaluateOutputAgainstCriteria(output: string, criteria: EvaluationCrite
     const mw = Number(criteria.maxWords);
     if (wc > mw) {
       violations.push(`exceeded_maxWords:${wc}/${mw}`);
-      score -= Math.min(30, (wc - mw) * 1.5);
+      score -= Math.min(25, (wc - mw) * 1.2);
     }
   }
 
@@ -315,7 +489,7 @@ function evaluateOutputAgainstCriteria(output: string, criteria: EvaluationCrite
     const hasPrice = detectPrice(output);
     if (wantsPrice && !hasPrice) {
       violations.push('missing_price');
-      score -= 20;
+      score -= 15;
     }
     if (!wantsPrice && hasPrice) {
       violations.push('unexpected_price');
@@ -327,7 +501,7 @@ function evaluateOutputAgainstCriteria(output: string, criteria: EvaluationCrite
     const missing = containsRequired(output, criteria.requiredElements || []);
     if (missing.length) {
       violations.push(`missing_elements:${missing.join(',')}`);
-      score -= 15 * missing.length;
+      score -= 12 * missing.length;
     }
   }
 
@@ -335,7 +509,7 @@ function evaluateOutputAgainstCriteria(output: string, criteria: EvaluationCrite
     const found = findForbidden(output, criteria.forbiddenWords || []);
     if (found.length) {
       violations.push(`forbidden_words:${found.join(',')}`);
-      score -= 20 * found.length;
+      score -= 15 * found.length;
     }
   }
 
@@ -344,13 +518,20 @@ function evaluateOutputAgainstCriteria(output: string, criteria: EvaluationCrite
     const got = simpleSentiment(output);
     if (want !== got) {
       violations.push(`sentiment_mismatch:expected_${want}_got_${got}`);
-      score -= 10;
+      score -= 8;
     }
   }
 
+  // Ensure minimum score
   if (score < 0) score = 0;
+
+  // Apply progressive difficulty multiplier
+  const finalScore = score * roundMultiplier;
+
   feedbackItems.push('Violations: ' + (violations.length ? violations.join(', ') : 'none'));
-  return { score: Math.round(score * 100) / 100, violations, feedback: feedbackItems.join('; ') };
+  feedbackItems.push(`Round ${roundMultiplier === 1.0 ? '1' : roundMultiplier === 1.5 ? '2' : '3'} multiplier: ${roundMultiplier}x`);
+
+  return { score: Math.round(finalScore * 100) / 100, violations, feedback: feedbackItems.join('; ') };
 }
 
 /* ----------------- Groq wrapper ----------------- */
@@ -383,16 +564,57 @@ app.post('/api/submit-prompt', async (req: Request<unknown, unknown, SubmitPromp
 
     const constraintsObj = constraints || {};
     const max_tokens = typeof constraintsObj.maxTokens === 'number' ? constraintsObj.maxTokens : 200;
-    const systemPrompt = 'You are a helpful LLM for the LLM-Arena competition. Answer according to constraints. These are the rules and hints for the user:\n' + SYSTEM_PROMPT;
+
+    // Create a professional system prompt for championship evaluation
+    const systemPrompt = `You are an AI assistant for the LLM-Arena Championship. Generate high-quality responses based on the user's prompt. Focus on being helpful, accurate, and creative while following any constraints provided.`;
 
     const llmResp = await callGroq(systemPrompt, prompt, 0.7, max_tokens);
     const tokensUsed = Math.max(1, countWords(llmResp));
 
-    const criteria: EvaluationCriteria = {};
-    if (typeof constraintsObj.maxWords === 'number') criteria.maxWords = constraintsObj.maxWords;
-    if (Array.isArray(constraintsObj.forbiddenWords)) criteria.forbiddenWords = constraintsObj.forbiddenWords;
+    // Get challenge details for evaluation context
+    const roundNum = round || 1;
+    let challengeDetails = null;
+    try {
+      // Try to get challenge details from database
+      const roundRecord = await prisma.round.findFirst({
+        where: { order: roundNum },
+        include: { challenges: true }
+      });
+      challengeDetails = roundRecord?.challenges?.[0] || null;
+    } catch (e) {
+      console.log('Could not fetch challenge details, using basic evaluation');
+    }
 
-    const evalResult = evaluateOutputAgainstCriteria(llmResp, criteria);
+    let evalResult: EvaluationResult;
+
+    // Apply progressive difficulty multipliers: Round 1 = 1x, Round 2 = 1.5x, Round 3 = 2x
+    const multiplier = roundNum === 1 ? 1.0 : roundNum === 2 ? 1.5 : roundNum === 3 ? 2.0 : 1.0;
+
+    // Special handling for Round 2 (reverse engineering)
+    if (roundNum === 2) {
+      // For reverse engineering, evaluate the user's prompt analysis rather than LLM output
+      evalResult = evaluateReverseEngineering(prompt);
+      // Apply multiplier to reverse engineering score
+      evalResult.score = Math.round(evalResult.score * multiplier * 100) / 100;
+    } else {
+      // Enhanced evaluation for Rounds 1 and 3 - evaluate both prompt quality and output
+      const criteria: EvaluationCriteria = {};
+      if (typeof constraintsObj.maxWords === 'number') criteria.maxWords = constraintsObj.maxWords;
+      if (Array.isArray(constraintsObj.forbiddenWords)) criteria.forbiddenWords = constraintsObj.forbiddenWords;
+
+      // Get base score from output evaluation
+      evalResult = evaluateOutputAgainstCriteria(llmResp, criteria, 1.0);
+
+      // Add prompt quality scoring
+      const promptScore = evaluatePromptQuality(prompt, roundNum);
+
+      // Combine scores: 60% output quality + 40% prompt quality
+      const combinedScore = (evalResult.score * 0.6) + (promptScore * 0.4);
+
+      // Apply round multiplier
+      evalResult.score = Math.round(combinedScore * multiplier * 100) / 100;
+      evalResult.feedback = `Output: ${evalResult.feedback} | Prompt Quality: ${promptScore}/100 | Combined Score: ${Math.round(combinedScore)} | Round ${roundNum} multiplier: ${multiplier}x`;
+    }
 
     await prisma.team.update({
       where: { id: teamId },
@@ -634,7 +856,11 @@ app.post('/api/challenges/:round/:challengeId/score', async (req: Request, res: 
       ...(baseCriteria.sentiment ? { sentiment: baseCriteria.sentiment } as any : {})
     };
 
-    const result = evaluateOutputAgainstCriteria(llmOutput, merged);
+    // Apply progressive difficulty multipliers: Round 1 = 1x, Round 2 = 1.5x, Round 3 = 2x  
+    const roundNum = roundDef.order;
+    const multiplier = roundNum === 1 ? 1.0 : roundNum === 2 ? 1.5 : roundNum === 3 ? 2.0 : 1.0;
+
+    const result = evaluateOutputAgainstCriteria(llmOutput, merged, multiplier);
 
     // Optionally persist as a Submission if teamId provided
     if (teamId) {
@@ -692,6 +918,52 @@ app.put("/api/teams/:id/status", async (req: Request<{ id: string }, unknown, { 
     return res.json({ success: true, team: updatedTeam });
   } catch (err) {
     console.error('Error updating team status:', err);
+    return res.status(500).json({ success: false, detail: 'Internal server error' });
+  }
+});
+
+/* ----------------- Endpoint: get team progress (which rounds completed) ----------------- */
+app.get('/api/teams/:id/progress', async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const team = await prisma.team.findUnique({ where: { id } });
+    if (!team) return res.status(404).json({ success: false, detail: 'Team not found' });
+
+    // Get all submissions for this team, grouped by round
+    const submissions = await prisma.submission.findMany({
+      where: { teamId: id },
+      select: { round: true, score: true, createdAt: true },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Determine which rounds are completed (have successful submissions with score > 60)
+    const roundProgress = [1, 2, 3].map(roundNum => {
+      const roundSubmissions = submissions.filter(s => s.round === roundNum);
+      const bestScore = Math.max(0, ...roundSubmissions.map(s => s.score));
+      const isCompleted = bestScore >= 60; // Minimum score to pass a round
+
+      return {
+        round: roundNum,
+        unlocked: roundNum === 1 || (roundNum > 1 && [1, 2].slice(0, roundNum - 1).every(r => {
+          const prevRoundSubs = submissions.filter(s => s.round === r);
+          const prevBestScore = Math.max(0, ...prevRoundSubs.map(s => s.score));
+          return prevBestScore >= 60;
+        })),
+        completed: isCompleted,
+        bestScore: bestScore > 0 ? bestScore : null,
+        attempts: roundSubmissions.length
+      };
+    });
+
+    return res.json({
+      success: true,
+      teamId: id,
+      levels: roundProgress,
+      totalScore: team.score
+    });
+  } catch (err) {
+    console.error('Error fetching team progress:', err);
     return res.status(500).json({ success: false, detail: 'Internal server error' });
   }
 });
