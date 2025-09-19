@@ -803,9 +803,7 @@ app.post('/api/teams/register', async (req: Request<unknown, unknown, CreateTeam
     if (!password || typeof password !== 'string' || !password.trim()) {
       return res.status(400).json({ success: false, detail: 'password is required' });
     }
-    if (members && !Array.isArray(members)) {
-      return res.status(400).json({ success: false, detail: 'members must be an array of strings' });
-    }
+    console.log(members);
     const membersStr = members?.join(',') || null;
     const team = await prisma.team.create({
       data: {
