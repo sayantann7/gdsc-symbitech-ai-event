@@ -10,7 +10,7 @@ const app = express();
 
 // CORS configuration
 app.use(cors({
-  origin: "*",
+  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -60,6 +60,7 @@ interface SubmitPromptBody {
 interface CreateTeamBody {
   name?: string;
   members?: string[]; // Accept array; will be stored as comma-separated string
+  password?: string;
   status?: string;
 }
 
@@ -284,48 +285,89 @@ function simpleSentiment(text: string | null | undefined): 'positive' | 'negativ
 }
 
 function evaluatePromptQuality(prompt: string, roundNum: number): number {
-  let score = 60; // Start with a reasonable base score
-
-  // Check prompt length and detail
+  let score = 0; // Start with 0 - must earn points
   const words = prompt.trim().split(/\s+/).length;
-  if (words < 5) {
-    score -= 30; // Very short prompts get heavily penalized
+  const promptLower = prompt.toLowerCase();
+
+  // Base length scoring - generous thresholds
+  if (words < 3) {
+    return 0; // Only fail for extremely short prompts
   } else if (words < 10) {
-    score -= 15; // Short prompts get moderately penalized  
-  } else if (words > 15) {
-    score += 10; // Longer, more detailed prompts get bonus points
+    score = 50; // Generous base score for short prompts
+  } else if (words >= 10 && words < 30) {
+    score = 70; // Good base score for decent length prompts
+  } else if (words >= 30) {
+    score = 80; // High base score for detailed prompts
   }
 
-  // Check for specific quality indicators based on round
+  // Round-specific requirements - more balanced scoring
   if (roundNum === 1) {
-    // Round 1: Marketing - look for marketing terms
-    if (/product|marketing|description|compelling|features|benefits|customers?/i.test(prompt)) {
-      score += 15;
+    // Round 1: Marketing and product description requirements
+    const hasMarketingContext = /smartphone|product|marketing|description|features|price|customers?|audience|target/i.test(prompt);
+    const hasActionWords = /write|create|generate|develop|describe|craft/i.test(prompt);
+    const hasConstraintAwareness = /words?|exactly|must include|price|rupees|₹|battery|camera|mah/i.test(prompt);
+    
+    if (!hasMarketingContext) {
+      score -= 10; // Light penalty for missing marketing context
+    } else {
+      score += 20; // Good bonus for marketing context
     }
-    if (/creative|innovative|unique|brand|target|audience/i.test(prompt)) {
-      score += 10;
+    
+    if (!hasActionWords) {
+      score -= 5; // Very light penalty for missing action words
+    } else {
+      score += 15; // Good bonus for clear action words
+    }
+    
+    if (!hasConstraintAwareness) {
+      score -= 10; // Light penalty for ignoring constraints
+    } else {
+      score += 20; // Good bonus for constraint awareness
+    }
+    
+    // Major bonus for comprehensive prompts that meet all requirements
+    if (hasMarketingContext && hasActionWords && hasConstraintAwareness) {
+      score += 20; // Substantial bonus for complete prompt
+    }
+  } else if (roundNum === 2) {
+    // Round 2: MUST show analytical thinking
+    const hasAnalyticalTerms = /prompt|original|reconstruct|analyze|likely|because|reasoning|structure|format/i.test(prompt);
+    const hasContextUnderstanding = /recipe|cooking|baking|output|given/i.test(prompt);
+    
+    if (!hasAnalyticalTerms) return 0; // Fail if no analytical approach
+    if (!hasContextUnderstanding) score -= 25;
+    
+    if (hasAnalyticalTerms && hasContextUnderstanding) {
+      score += 35;
     }
   } else if (roundNum === 3) {
-    // Round 3: Business strategy - look for business terms
-    if (/business|strategy|plan|market|analysis|financial|revenue|growth/i.test(prompt)) {
+    // Round 3: MUST have business strategy context
+    const hasBusinessContext = /business|strategy|plan|startup|edtech|market|revenue|analysis|platform/i.test(prompt);
+    const hasComplexity = /comprehensive|detailed|structured|professional|specific|metrics|timeline|risk|mitigation/i.test(prompt);
+    const hasRequirements = /target market|revenue model|technology stack|go-to-market|risk assessment/i.test(prompt);
+    
+    if (!hasBusinessContext) return 0; // Fail if no business context
+    if (!hasComplexity) score -= 20;
+    if (!hasRequirements) score -= 25;
+    
+    if (hasBusinessContext && hasComplexity && hasRequirements) {
+      score += 40;
+    }
+  }
+
+  // Quality indicators (only apply if basic requirements met)
+  if (score > 0) {
+    if (/detailed|comprehensive|specific|professional|high-quality|precise|exactly|must/i.test(prompt)) {
       score += 15;
     }
-    if (/competitive|scalable|funding|team|projections|risk|mitigation/i.test(prompt)) {
-      score += 10;
+    
+    // Structure and clarity bonus
+    if (/\d+\)|1\.|2\.|first|second|include:|requirements:|constraints:/i.test(prompt)) {
+      score += 10; // Bonus for structured approach
     }
   }
 
-  // Check for clarity and instruction quality
-  if (/create|generate|develop|build|design|write/i.test(prompt)) {
-    score += 5; // Clear action words
-  }
-
-  if (/detailed|comprehensive|specific|professional|high-quality/i.test(prompt)) {
-    score += 8; // Quality indicators
-  }
-
-  // Ensure score is within bounds
-  return Math.max(20, Math.min(100, score));
+  return Math.max(0, Math.min(100, score));
 }
 
 function evaluateReverseEngineering(userResponse: string): EvaluationResult {
@@ -454,84 +496,105 @@ Respond in JSON format:
 }
 
 function evaluateOutputAgainstCriteria(output: string, criteria: EvaluationCriteria = {}, roundMultiplier: number = 1.0): EvaluationResult {
-  let score = 70.0; // Start with a more realistic base score
+  let score = 50.0; // Start with moderate base score
   const violations: string[] = [];
   const feedbackItems: string[] = [];
   const wc = countWords(output);
 
-  // Basic quality checks
+  // STRICT: Basic quality requirements
   if (wc < 10) {
     violations.push('too_short');
-    score -= 30;
+    return { score: 0, violations, feedback: 'Output too short - automatic fail' };
   } else if (wc < 20) {
     violations.push('very_brief');
-    score -= 15;
+    score -= 20;
   }
 
-  if ('wordCount' in criteria && typeof criteria.wordCount === 'number') {
-    const expected = Number(criteria.wordCount);
-    if (wc !== expected) {
-      violations.push(`wordCount:${wc}/${expected}`);
-      score -= Math.min(25, Math.abs(wc - expected) * 1.5);
-    }
-  }
-
+  // STRICT: Word count requirements (EXACT for certain challenges)
   if ('maxWords' in criteria && typeof criteria.maxWords === 'number') {
-    const mw = Number(criteria.maxWords);
-    if (wc > mw) {
-      violations.push(`exceeded_maxWords:${wc}/${mw}`);
-      score -= Math.min(25, (wc - mw) * 1.2);
+    const maxWords = Number(criteria.maxWords);
+    
+    // For Round 1 (precision challenge), word count must be EXACTLY right
+    if (maxWords === 75) { // Precision challenge
+      if (wc !== maxWords) {
+        violations.push(`exact_word_count_required:${wc}/${maxWords}`);
+        return { score: 0, violations, feedback: `PRECISION FAIL: Must be EXACTLY ${maxWords} words, got ${wc} words.` };
+      } else {
+        score += 25; // Bonus for exact precision
+      }
+    } else {
+      // For other challenges, allow some flexibility but penalize heavily
+      if (wc > maxWords) {
+        violations.push(`exceeded_maxWords:${wc}/${maxWords}`);
+        score -= Math.min(30, (wc - maxWords) * 2);
+      }
     }
   }
 
+  // STRICT: Required elements are MANDATORY
+  if ('requiredElements' in criteria && criteria.requiredElements) {
+    const missing = containsRequired(output, criteria.requiredElements || []);
+    if (missing.length > 0) {
+      violations.push(`missing_critical_elements:${missing.join(',')}`);
+      // Missing required elements = major penalty or fail
+      if (missing.length >= 2) {
+        return { score: 0, violations, feedback: `CRITICAL FAIL: Missing required elements: ${missing.join(', ')}` };
+      } else {
+        score -= 25; // Heavy penalty for missing one element
+      }
+    } else {
+      score += 20; // Bonus for including all required elements
+    }
+  }
+
+  // STRICT: Forbidden words are STRICTLY forbidden
+  if ('forbiddenWords' in criteria && criteria.forbiddenWords) {
+    const found = findForbidden(output, criteria.forbiddenWords || []);
+    if (found.length > 0) {
+      violations.push(`forbidden_words_used:${found.join(',')}`);
+      score -= 20 * found.length; // Heavy penalty for each forbidden word
+    }
+  }
+
+  // Content quality checks
   if ('containsPrice' in criteria && typeof criteria.containsPrice === 'boolean') {
     const wantsPrice = !!criteria.containsPrice;
     const hasPrice = detectPrice(output);
     if (wantsPrice && !hasPrice) {
       violations.push('missing_price');
+      score -= 20;
+    }
+  }
+
+  // Marketing content quality (for Round 1)
+  if (criteria.requiredElements?.includes('₹')) {
+    const hasFeatures = /camera|battery|display|storage|processor|RAM|screen/i.test(output);
+    const hasTarget = /students?|professionals?|users?|people|customers?|audience/i.test(output);
+    const isCompelling = /amazing|excellent|perfect|ideal|best|great|outstanding|premium/i.test(output);
+    
+    if (!hasFeatures) {
+      violations.push('lacks_product_features');
       score -= 15;
     }
-    if (!wantsPrice && hasPrice) {
-      violations.push('unexpected_price');
-      score -= 5;
+    if (!hasTarget) {
+      violations.push('no_target_audience');
+      score -= 10;
     }
-  }
-
-  if ('requiredElements' in criteria && criteria.requiredElements) {
-    const missing = containsRequired(output, criteria.requiredElements || []);
-    if (missing.length) {
-      violations.push(`missing_elements:${missing.join(',')}`);
-      score -= 12 * missing.length;
-    }
-  }
-
-  if ('forbiddenWords' in criteria && criteria.forbiddenWords) {
-    const found = findForbidden(output, criteria.forbiddenWords || []);
-    if (found.length) {
-      violations.push(`forbidden_words:${found.join(',')}`);
-      score -= 15 * found.length;
-    }
-  }
-
-  if ('sentiment' in criteria && criteria.sentiment) {
-    const want = criteria.sentiment;
-    const got = simpleSentiment(output);
-    if (want !== got) {
-      violations.push(`sentiment_mismatch:expected_${want}_got_${got}`);
-      score -= 8;
+    if (!isCompelling) {
+      violations.push('not_compelling');
+      score -= 10;
     }
   }
 
   // Ensure minimum score
   if (score < 0) score = 0;
 
-  // Apply progressive difficulty multiplier
-  const finalScore = score * roundMultiplier;
-
   feedbackItems.push('Violations: ' + (violations.length ? violations.join(', ') : 'none'));
-  feedbackItems.push(`Round ${roundMultiplier === 1.0 ? '1' : roundMultiplier === 1.5 ? '2' : '3'} multiplier: ${roundMultiplier}x`);
+  if (violations.length === 0 && score >= 70) {
+    feedbackItems.push('Excellent work! All requirements met.');
+  }
 
-  return { score: Math.round(finalScore * 100) / 100, violations, feedback: feedbackItems.join('; ') };
+  return { score: Math.round(score * 100) / 100, violations, feedback: feedbackItems.join('; ') };
 }
 
 /* ----------------- Groq wrapper ----------------- */
@@ -562,20 +625,38 @@ app.post('/api/submit-prompt', async (req: Request<unknown, unknown, SubmitPromp
     const team = await prisma.team.findUnique({ where: { id: teamId } });
     if (!team) return res.status(404).json({ success: false, detail: 'Team not found' });
 
+    const roundNum = round || 1;
+    
+    // Check token availability for the round
+    const tokenField = `tokensRound${roundNum}` as keyof typeof team;
+    const remainingTokens = team[tokenField] as number;
+    
+    if (remainingTokens <= 0) {
+      return res.json({
+        success: true,
+        passed: false,
+        response: 'No tokens remaining for this round',
+        tokensUsed: 0,
+        score: 0,
+        feedback: 'PENALTY: Out of tokens for this round. -20 points deducted from team score.',
+        message: 'No tokens remaining for this round! -20 points penalty applied.',
+        threshold: 60,
+        tokensRemaining: 0
+      });
+    }
+
     const constraintsObj = constraints || {};
-    const max_tokens = typeof constraintsObj.maxTokens === 'number' ? constraintsObj.maxTokens : 200;
+    const max_tokens = Math.min(remainingTokens, typeof constraintsObj.maxTokens === 'number' ? constraintsObj.maxTokens : 200);
 
     // Create a professional system prompt for championship evaluation
     const systemPrompt = `You are an AI assistant for the LLM-Arena Championship. Generate high-quality responses based on the user's prompt. Focus on being helpful, accurate, and creative while following any constraints provided.`;
 
     const llmResp = await callGroq(systemPrompt, prompt, 0.7, max_tokens);
-    const tokensUsed = Math.max(1, countWords(llmResp));
+    const tokensUsed = Math.min(remainingTokens, Math.max(1, countWords(llmResp)));
 
     // Get challenge details for evaluation context
-    const roundNum = round || 1;
     let challengeDetails = null;
     try {
-      // Try to get challenge details from database
       const roundRecord = await prisma.round.findFirst({
         where: { order: roundNum },
         include: { challenges: true }
@@ -586,41 +667,72 @@ app.post('/api/submit-prompt', async (req: Request<unknown, unknown, SubmitPromp
     }
 
     let evalResult: EvaluationResult;
-
-    // Apply progressive difficulty multipliers: Round 1 = 1x, Round 2 = 1.5x, Round 3 = 2x
     const multiplier = roundNum === 1 ? 1.0 : roundNum === 2 ? 1.5 : roundNum === 3 ? 2.0 : 1.0;
 
-    // Special handling for Round 2 (reverse engineering)
-    if (roundNum === 2) {
-      // For reverse engineering, evaluate the user's prompt analysis rather than LLM output
+    // Evaluate prompt quality FIRST
+    const promptScore = evaluatePromptQuality(prompt, roundNum);
+    console.log(`[DEBUG] Prompt evaluation - Round ${roundNum}, Prompt Score: ${promptScore}/100`);
+    console.log(`[DEBUG] Prompt preview: ${prompt.substring(0, 100)}...`);
+    
+    if (promptScore <= 5) {
+      // Auto-fail only for completely inadequate prompts (less than 3 words)
+      evalResult = {
+        score: Math.max(10, promptScore), // Give reasonable points even for poor prompts
+        violations: ['inadequate_prompt'],
+        feedback: `Low prompt quality: ${promptScore}/100. For Round ${roundNum}, consider providing a more detailed prompt that addresses the specific challenge requirements.`
+      };
+    } else if (roundNum === 2) {
+      // For reverse engineering, evaluate the user's prompt analysis
       evalResult = evaluateReverseEngineering(prompt);
-      // Apply multiplier to reverse engineering score
       evalResult.score = Math.round(evalResult.score * multiplier * 100) / 100;
     } else {
-      // Enhanced evaluation for Rounds 1 and 3 - evaluate both prompt quality and output
+      // Enhanced evaluation for Rounds 1 and 3
       const criteria: EvaluationCriteria = {};
-      if (typeof constraintsObj.maxWords === 'number') criteria.maxWords = constraintsObj.maxWords;
-      if (Array.isArray(constraintsObj.forbiddenWords)) criteria.forbiddenWords = constraintsObj.forbiddenWords;
+      
+      if (challengeDetails?.constraints) {
+        const constraints = challengeDetails.constraints as any;
+        if (constraints.maxWords) criteria.maxWords = constraints.maxWords;
+        if (constraints.forbiddenWords) criteria.forbiddenWords = constraints.forbiddenWords;
+        if (constraints.requiredElements) criteria.requiredElements = constraints.requiredElements;
+      }
 
-      // Get base score from output evaluation
+      // Evaluate output against criteria
       evalResult = evaluateOutputAgainstCriteria(llmResp, criteria, 1.0);
+      
+      // Generous combination: 80% prompt quality + 20% output quality
+      // Heavy weight on prompt since that's what users control
+      const combinedScore = (promptScore * 0.8) + (evalResult.score * 0.2);
+      
+      // Only apply penalty if prompt is extremely poor (< 10)
+      if (promptScore < 10) {
+        evalResult.score = Math.max(promptScore, combinedScore * 0.8);
+      } else {
+        // For decent prompts, always use the full combined score
+        evalResult.score = Math.max(combinedScore, promptScore * 0.7); // Ensure good prompts get good scores
+      }
 
-      // Add prompt quality scoring
-      const promptScore = evaluatePromptQuality(prompt, roundNum);
-
-      // Combine scores: 60% output quality + 40% prompt quality
-      const combinedScore = (evalResult.score * 0.6) + (promptScore * 0.4);
-
-      // Apply round multiplier
-      evalResult.score = Math.round(combinedScore * multiplier * 100) / 100;
-      evalResult.feedback = `Output: ${evalResult.feedback} | Prompt Quality: ${promptScore}/100 | Combined Score: ${Math.round(combinedScore)} | Round ${roundNum} multiplier: ${multiplier}x`;
+      evalResult.score = Math.round(evalResult.score * multiplier * 100) / 100;
+      evalResult.feedback = `Prompt Quality: ${promptScore}/100 | Output Quality: ${Math.round(evalResult.score / multiplier / 0.4 - promptScore * 0.6 / 0.4)}/100 | Combined Score: ${Math.round(evalResult.score / multiplier)} | Round ${roundNum} multiplier: ${multiplier}x | ${evalResult.feedback}`;
     }
 
-    // Define passing threshold
-    const PASSING_THRESHOLD = 60;
-    const passed = evalResult.score >= PASSING_THRESHOLD;
+    // Update team tokens
+    const newTokens = Math.max(0, remainingTokens - tokensUsed);
+    const updateData: any = {};
+    updateData[tokenField] = newTokens;
+    
+    // Token penalty if running low
+    let tokenPenalty = 0;
+    if (newTokens === 0 && evalResult.score > 0) {
+      tokenPenalty = 20;
+      updateData.score = Math.max(0, team.score - tokenPenalty);
+    }
 
-    // Always create submission record for tracking attempts
+    await prisma.team.update({
+      where: { id: teamId },
+      data: updateData
+    });
+
+    // Always create submission record
     await prisma.submission.create({
       data: {
         id: uuidv4(),
@@ -635,11 +747,15 @@ app.post('/api/submit-prompt', async (req: Request<unknown, unknown, SubmitPromp
       }
     });
 
-    // Only update team score if the attempt passed
-    if (passed) {
+    // STRICT passing threshold
+    const PASSING_THRESHOLD = 70; // Increased from 60 to 70
+    const passed = evalResult.score >= PASSING_THRESHOLD;
+
+    if (passed && tokenPenalty === 0) {
+      // Only update score if passed AND no token penalty
       await prisma.team.update({
         where: { id: teamId },
-        data: { score: team.score + (typeof evalResult.score === 'number' ? evalResult.score : 0) }
+        data: { score: team.score + evalResult.score }
       });
 
       return res.json({
@@ -647,19 +763,27 @@ app.post('/api/submit-prompt', async (req: Request<unknown, unknown, SubmitPromp
         passed: true,
         response: llmResp,
         tokensUsed,
+        tokensRemaining: newTokens,
         score: evalResult.score,
         feedback: evalResult.feedback,
-        message: `Congratulations! You passed Round ${roundNum} with ${evalResult.score} points!`
+        message: `Excellent! You passed Round ${roundNum} with ${evalResult.score} points!`
       });
     } else {
+      let message = `Need at least ${PASSING_THRESHOLD} points to pass. You scored ${evalResult.score} points.`;
+      if (tokenPenalty > 0) {
+        message += ` WARNING: Out of tokens! -${tokenPenalty} penalty applied to team score.`;
+      }
+      message += ' Try again!';
+      
       return res.json({
         success: true,
         passed: false,
         response: llmResp,
         tokensUsed,
+        tokensRemaining: newTokens,
         score: evalResult.score,
-        feedback: evalResult.feedback,
-        message: `Put more effort! You need at least ${PASSING_THRESHOLD} points to pass. You scored ${evalResult.score} points. Try again!`,
+        feedback: evalResult.feedback + (tokenPenalty > 0 ? ` | TOKEN PENALTY: -${tokenPenalty} points` : ''),
+        message,
         threshold: PASSING_THRESHOLD
       });
     }
@@ -672,9 +796,12 @@ app.post('/api/submit-prompt', async (req: Request<unknown, unknown, SubmitPromp
 /* ----------------- Endpoint: create team ----------------- */
 app.post('/api/teams/register', async (req: Request<unknown, unknown, CreateTeamBody>, res: Response) => {
   try {
-    const { name, members, status } = req.body || {};
+    const { name, members, password, status } = req.body || {};
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ success: false, detail: 'name is required' });
+    }
+    if (!password || typeof password !== 'string' || !password.trim()) {
+      return res.status(400).json({ success: false, detail: 'password is required' });
     }
     if (members && !Array.isArray(members)) {
       return res.status(400).json({ success: false, detail: 'members must be an array of strings' });
@@ -684,12 +811,77 @@ app.post('/api/teams/register', async (req: Request<unknown, unknown, CreateTeam
       data: {
         name: name.trim(),
         members: membersStr,
+        password: password.trim(),
         status: status && typeof status === 'string' ? status : undefined
       }
     });
     return res.status(201).json({ success: true, team });
   } catch (err) {
     console.error('Error creating team:', err);
+    return res.status(500).json({ success: false, detail: 'Internal server error' });
+  }
+});
+
+/* ----------------- Endpoint: team login ----------------- */
+app.post('/api/teams/login', async (req: Request<unknown, unknown, { name?: string; password?: string }>, res: Response) => {
+  try {
+    const { name, password } = req.body || {};
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ success: false, detail: 'team name is required' });
+    }
+    if (!password || typeof password !== 'string' || !password.trim()) {
+      return res.status(400).json({ success: false, detail: 'password is required' });
+    }
+
+    // Find team by name
+    const team = await prisma.team.findFirst({
+      where: { name: name.trim() }
+    });
+
+    if (!team) {
+      return res.status(401).json({ success: false, detail: 'Invalid team name or password' });
+    }
+
+    // Check password (plain text comparison as requested)
+    if (team.password !== password.trim()) {
+      return res.status(401).json({ success: false, detail: 'Invalid team name or password' });
+    }
+
+    // Return team data (excluding password for security)
+    const { password: _, ...teamData } = team;
+    return res.status(200).json({ success: true, team: teamData });
+  } catch (err) {
+    console.error('Error during team login:', err);
+    return res.status(500).json({ success: false, detail: 'Internal server error' });
+  }
+});
+
+/* ----------------- Endpoint: get team tokens ----------------- */
+app.get('/api/teams/:id/tokens', async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const { id } = req.params;
+    const team = await prisma.team.findUnique({ 
+      where: { id },
+      select: { 
+        id: true, 
+        name: true, 
+        tokensRound1: true, 
+        tokensRound2: true, 
+        tokensRound3: true 
+      }
+    });
+    if (!team) return res.status(404).json({ success: false, detail: 'Team not found' });
+    
+    return res.json({ 
+      success: true, 
+      tokens: {
+        round1: team.tokensRound1,
+        round2: team.tokensRound2,
+        round3: team.tokensRound3
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching team tokens:', err);
     return res.status(500).json({ success: false, detail: 'Internal server error' });
   }
 });
