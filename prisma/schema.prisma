@@ -18,6 +18,9 @@ model Team {
   tokensRound1 Int          @default(500)
   tokensRound2 Int          @default(300)
   tokensRound3 Int          @default(200)
+  challengeRound1 Int?       // Random challenge index for round 1
+  challengeRound2 Int?       // Random challenge index for round 2  
+  challengeRound3 Int?       // Random challenge index for round 3
   submissions  Submission[]
 }
 

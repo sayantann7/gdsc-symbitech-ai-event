@@ -10,7 +10,7 @@ const app = express();
 
 // CORS configuration
 app.use(cors({
-  origin: "*",
+  origin: '*',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -163,6 +163,54 @@ const SEED_ROUNDS: Array<{ order: number; title: string; description: string; ch
         },
         timeLimit: 300,
         maxAttempts: 3
+      },
+      {
+        slug: 'travel-itinerary-constrained',
+        title: 'Precise Travel Planning',
+        description: 'Create a 3-day Delhi travel itinerary that is EXACTLY 100 words. Must include budget in rupees, specific attractions, and transportation modes. Forbidden words: "amazing", "incredible", "stunning", "breathtaking". Required elements: ₹, metro, auto, specific monuments.',
+        constraints: {
+          maxWords: 100,
+          forbiddenWords: ['amazing', 'incredible', 'stunning', 'breathtaking', 'awesome'],
+          requiredElements: ['₹', 'metro', 'auto', 'Red Fort', 'India Gate']
+        },
+        timeLimit: 300,
+        maxAttempts: 3
+      },
+      {
+        slug: 'recipe-precision-cooking',
+        title: 'Precise Recipe Creation',
+        description: 'Write a recipe for Butter Chicken that is EXACTLY 80 words. Must include cooking time, servings, and key spices. Forbidden words: "delicious", "mouth-watering", "perfect", "traditional". Required elements: minutes, serves, garam masala, cream.',
+        constraints: {
+          maxWords: 80,
+          forbiddenWords: ['delicious', 'mouth-watering', 'perfect', 'traditional', 'authentic'],
+          requiredElements: ['minutes', 'serves', 'garam masala', 'cream']
+        },
+        timeLimit: 300,
+        maxAttempts: 3
+      },
+      {
+        slug: 'job-posting-constraints',
+        title: 'Constrained Job Description',
+        description: 'Create a software engineer job posting that is EXACTLY 90 words. Must include salary range, experience required, and tech stack. Forbidden words: "rockstar", "ninja", "guru", "passionate". Required elements: ₹, years, React, Python.',
+        constraints: {
+          maxWords: 90,
+          forbiddenWords: ['rockstar', 'ninja', 'guru', 'passionate', 'dynamic'],
+          requiredElements: ['₹', 'years', 'React', 'Python']
+        },
+        timeLimit: 300,
+        maxAttempts: 3
+      },
+      {
+        slug: 'event-description-precise',
+        title: 'Event Marketing Copy',
+        description: 'Write a tech conference promotional description that is EXACTLY 85 words. Must include date, venue, and ticket price. Forbidden words: "exclusive", "prestigious", "premier", "unparalleled". Required elements: 2025, Mumbai, ₹, speakers.',
+        constraints: {
+          maxWords: 85,
+          forbiddenWords: ['exclusive', 'prestigious', 'premier', 'unparalleled', 'elite'],
+          requiredElements: ['2025', 'Mumbai', '₹', 'speakers']
+        },
+        timeLimit: 300,
+        maxAttempts: 3
       }
     ]
   },
@@ -178,6 +226,38 @@ const SEED_ROUNDS: Array<{ order: number; title: string; description: string; ch
         triggerDescription: 'Analyze the given output and provide the most likely original prompt with reasoning.',
         timeLimit: 400,
         maxAttempts: 2
+      },
+      {
+        slug: 'reverse-engineer-email',
+        title: 'Reverse Engineer: Professional Email',
+        description: 'CHALLENGE: Given this AI output - "Subject: Project Update - Q4 Deliverables\n\nHi Sarah,\n\nI wanted to update you on our progress. We have completed 3 out of 5 milestones. The remaining tasks include testing and documentation. Expected completion: December 15th. Budget is on track at ₹2.5L spent out of ₹3L allocated.\n\nBest regards,\nAlex" - Reconstruct the original prompt that generated this email.',
+        triggerDescription: 'Analyze the professional email output and reconstruct the original prompt with reasoning.',
+        timeLimit: 400,
+        maxAttempts: 2
+      },
+      {
+        slug: 'reverse-engineer-story',
+        title: 'Reverse Engineer: Creative Story',
+        description: 'CHALLENGE: Given this AI output - "The old lighthouse keeper noticed strange lights in the fog. Every night at midnight, three green flashes appeared exactly 2 kilometers offshore. After 7 days of observation, he decided to investigate using his small boat. The mystery led him to discover an underwater research station studying bioluminescent plankton." - What prompt created this story?',
+        triggerDescription: 'Analyze the creative story output and determine the original prompt structure.',
+        timeLimit: 400,
+        maxAttempts: 2
+      },
+      {
+        slug: 'reverse-engineer-analysis',
+        title: 'Reverse Engineer: Data Analysis',
+        description: 'CHALLENGE: Given this AI output - "Market Analysis Summary:\n• Revenue Growth: 23% YoY\n• Customer Acquisition Cost: ₹150 per customer\n• Retention Rate: 87%\n• Top performing segment: 25-34 age group\n• Recommendation: Increase marketing spend in Tier-2 cities by 40%" - Reconstruct the analytical prompt.',
+        triggerDescription: 'Analyze the business analysis output and reconstruct the data analysis prompt.',
+        timeLimit: 400,
+        maxAttempts: 2
+      },
+      {
+        slug: 'reverse-engineer-tutorial',
+        title: 'Reverse Engineer: Technical Tutorial',
+        description: 'CHALLENGE: Given this AI output - "Step 1: Install Node.js version 18+\nStep 2: Run npm init -y to create package.json\nStep 3: Install Express with npm install express\nStep 4: Create server.js with basic routing\nStep 5: Start server with node server.js\nStep 6: Test on localhost:3000" - What was the original tutorial request?',
+        triggerDescription: 'Analyze the technical tutorial and determine the original instructional prompt.',
+        timeLimit: 400,
+        maxAttempts: 2
       }
     ]
   },
@@ -191,6 +271,38 @@ const SEED_ROUNDS: Array<{ order: number; title: string; description: string; ch
         title: 'Comprehensive Startup Strategy',
         description: 'SCENARIO: You are consulting for a new EdTech startup that wants to create an AI-powered learning platform for college students in India. Create a prompt that generates: 1) Target market analysis, 2) Revenue model with pricing tiers, 3) Technology stack requirements, 4) Go-to-market strategy with timeline, 5) Risk assessment with mitigation plans. The output should be structured, professional, and include specific metrics and actionable insights.',
         triggerDescription: 'Design a comprehensive business strategy prompt for an EdTech startup targeting Indian college students.',
+        timeLimit: 600,
+        maxAttempts: 2
+      },
+      {
+        slug: 'healthcare-ai-system',
+        title: 'Healthcare AI Implementation',
+        description: 'SCENARIO: A major hospital chain wants to implement AI for patient diagnosis assistance. Create a prompt that generates: 1) Technical architecture for AI integration, 2) Patient data privacy compliance (HIPAA/Indian regulations), 3) Doctor training program structure, 4) Implementation phases with timelines, 5) Success metrics and monitoring systems. Include specific cost estimates and regulatory considerations.',
+        triggerDescription: 'Design a comprehensive AI implementation strategy for healthcare diagnostics.',
+        timeLimit: 600,
+        maxAttempts: 2
+      },
+      {
+        slug: 'ecommerce-expansion-strategy',
+        title: 'E-commerce Global Expansion',
+        description: 'SCENARIO: An Indian e-commerce platform wants to expand to Southeast Asia. Create a prompt that generates: 1) Market entry strategy for 3 countries, 2) Localization requirements (language, payment, logistics), 3) Competitive analysis and positioning, 4) Technology infrastructure scaling plan, 5) Legal and regulatory compliance framework. Include budget allocation and 18-month roadmap.',
+        triggerDescription: 'Design a comprehensive international expansion strategy for e-commerce.',
+        timeLimit: 600,
+        maxAttempts: 2
+      },
+      {
+        slug: 'smart-city-iot-deployment',
+        title: 'Smart City IoT Infrastructure',
+        description: 'SCENARIO: A metropolitan city wants to deploy IoT sensors for traffic management, air quality monitoring, and waste optimization. Create a prompt that generates: 1) IoT sensor deployment strategy, 2) Data collection and analytics framework, 3) Citizen privacy protection measures, 4) Integration with existing city systems, 5) ROI analysis and sustainability metrics. Include vendor selection criteria and maintenance plans.',
+        triggerDescription: 'Design a comprehensive smart city IoT implementation strategy.',
+        timeLimit: 600,
+        maxAttempts: 2
+      },
+      {
+        slug: 'fintech-blockchain-solution',
+        title: 'FinTech Blockchain Platform',
+        description: 'SCENARIO: Design a blockchain-based payment solution for rural Indian farmers. Create a prompt that generates: 1) Blockchain architecture for micropayments, 2) User onboarding for low-literacy users, 3) Integration with existing banking systems, 4) Regulatory compliance (RBI guidelines), 5) Scalability plan for 10M+ users. Include security protocols, transaction costs, and digital literacy training programs.',
+        triggerDescription: 'Design a comprehensive blockchain payment solution for rural markets.',
         timeLimit: 600,
         maxAttempts: 2
       }
@@ -803,7 +915,9 @@ app.post('/api/teams/register', async (req: Request<unknown, unknown, CreateTeam
     if (!password || typeof password !== 'string' || !password.trim()) {
       return res.status(400).json({ success: false, detail: 'password is required' });
     }
-    console.log(members);
+    if (members && !Array.isArray(members)) {
+      return res.status(400).json({ success: false, detail: 'members must be an array of strings' });
+    }
     const membersStr = members?.join(',') || null;
     const team = await prisma.team.create({
       data: {
@@ -993,19 +1107,66 @@ app.post('/api/challenges', async (req: Request<unknown, unknown, CreateChalleng
   }
 });
 
-/* ----------------- Endpoint: fetch challenge by round order and slug/id ----------------- */
+/* ----------------- Endpoint: fetch random challenge for team by round ----------------- */
 app.get('/api/challenges/:round/:challengeId', async (req: Request, res: Response) => {
   try {
     const { round, challengeId } = req.params;
-    const roundIndex = Number(round) - 1;
-    const challengeIndex = Number(challengeId) - 1;
+    const { teamId } = req.query;
+    
+    const roundNum = Number(round);
+    const roundIndex = roundNum - 1;
+    
     if (!Number.isInteger(roundIndex) || roundIndex < 0 || roundIndex >= SEED_ROUNDS.length) {
       return res.status(400).json({ success: false, detail: 'Invalid round index. Use 1-based index into SEED_ROUNDS.' });
     }
+    
     const roundDef = SEED_ROUNDS[roundIndex];
-    if (!Number.isInteger(challengeIndex) || challengeIndex < 0 || challengeIndex >= roundDef.challenges.length) {
-      return res.status(400).json({ success: false, detail: 'Invalid challenge index. Use 1-based index into the round\'s challenges.' });
+    let challengeIndex = 0;
+    
+    // If teamId is provided, get/assign random challenge for this team
+    if (teamId && typeof teamId === 'string') {
+      try {
+        const team = await prisma.team.findUnique({ where: { id: teamId } });
+        if (team) {
+          const challengeFieldName = `challengeRound${roundNum}` as keyof typeof team;
+          let assignedChallengeIndex = team[challengeFieldName] as number | null;
+          
+          // If team doesn't have a challenge assigned for this round, assign one randomly
+          if (assignedChallengeIndex === null || assignedChallengeIndex === undefined) {
+            assignedChallengeIndex = Math.floor(Math.random() * roundDef.challenges.length);
+            
+            // Update team with assigned challenge
+            const updateData: any = {};
+            updateData[challengeFieldName] = assignedChallengeIndex;
+            
+            await prisma.team.update({
+              where: { id: teamId },
+              data: updateData
+            });
+            
+            console.log(`[RANDOM CHALLENGE] Team ${teamId} assigned challenge ${assignedChallengeIndex} for round ${roundNum}`);
+          }
+          
+          challengeIndex = assignedChallengeIndex;
+        } else {
+          // Team not found, use first challenge as fallback
+          challengeIndex = 0;
+        }
+      } catch (dbError) {
+        console.error('Database error in challenge assignment:', dbError);
+        // Fallback to random selection without DB update
+        challengeIndex = Math.floor(Math.random() * roundDef.challenges.length);
+      }
+    } else {
+      // No teamId provided, use challengeId parameter or fallback to first challenge
+      const paramChallengeIndex = Number(challengeId) - 1;
+      if (Number.isInteger(paramChallengeIndex) && paramChallengeIndex >= 0 && paramChallengeIndex < roundDef.challenges.length) {
+        challengeIndex = paramChallengeIndex;
+      } else {
+        challengeIndex = 0; // Fallback to first challenge
+      }
     }
+    
     const ch = roundDef.challenges[challengeIndex];
 
     return res.json({
@@ -1016,7 +1177,8 @@ app.get('/api/challenges/:round/:challengeId', async (req: Request, res: Respons
         description: ch.description,
         constraints: ch.constraints ?? null,
         timeLimit: typeof ch.timeLimit === 'number' ? ch.timeLimit : null,
-        maxAttempts: typeof ch.maxAttempts === 'number' ? ch.maxAttempts : null
+        maxAttempts: typeof ch.maxAttempts === 'number' ? ch.maxAttempts : null,
+        assignedIndex: challengeIndex
       }
     });
   } catch (err) {
